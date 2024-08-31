@@ -31,7 +31,7 @@ const getNewMessages = async (channelId) => {
     if (newMessages.length == messagesToGet) {
         //We need to get more messages!
         console.log('Received max messages, getting more!')
-        msgs = await axios.get(`https://discord.com/api/v9/channels/${channelId}/messages?limit=${messagesToGet*3}`, {
+        msgs = await axios.get(`https://discord.com/api/v9/channels/${channelId}/messages?limit=100`, {
             headers
         })
         newMessages = msgs.data.filter(msg => new Date(msg.timestamp).getTime() > latestMessageTimestamp);
