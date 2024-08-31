@@ -5,7 +5,6 @@
     "dyanamoDB_table": "discord-messages",
     "discord_accessToken": "",
     "openAI_key": "",
-    "posttext": "Please provide me a summary as well as sentiment alalysis of the messages.",
     "channels": [
         {
             "id": "xxxxxxxxxxxx",
