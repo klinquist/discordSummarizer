@@ -108,7 +108,7 @@ const pollForChanges = async () => {
     // Every hour 10PM-12PM
     cron.schedule('0 22-23 * * *', async () => { // 1-5 specifies Monday to Friday
         await pollForChanges();
-        console.log(`[${moment().tz(config.timeZone).format()}] Executed hourly weekday nighttime poll (22-23).`);
+        console.log(`[${moment().tz(config.timeZone).format()}] Executed hourly nighttime poll (22-23).`);
     }, {
         timezone: config.timeZone
     });
@@ -116,7 +116,7 @@ const pollForChanges = async () => {
     // Every hour 12AM-4AM
     cron.schedule('0 0-4 * * *', async () => { // 1-5 specifies Monday to Friday
         await pollForChanges();
-        console.log(`[${moment().tz(config.timeZone).format()}] Executed hourly weekday nighttime poll (0-4).`);
+        console.log(`[${moment().tz(config.timeZone).format()}] Executed hourly nighttime poll (0-4).`);
     }, {
         timezone: config.timeZone
     });
