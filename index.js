@@ -43,7 +43,7 @@ const writeMessagesToDynamoDB = async (messages, channelId) => {
                     messageId: msg.id,
                     timestamp: new Date(msg.timestamp).getTime(),
                     authorId: msg.author.id,
-                    authorName: msg.author.username,
+                    authorName: msg.author.global_name || msg.author.username,
                     content: msg.content,
                     referenced_message: msg.referenced_message && msg.referenced_message.id,
                     mentions: msg.mentions.map(mention => mention.id),
