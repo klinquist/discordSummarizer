@@ -35,6 +35,9 @@ const getNewMessages = async (channelId) => {
             headers
         })
         newMessages = msgs.data.filter(msg => new Date(msg.timestamp).getTime() > latestMessageTimestamp);
+        if (newMessages.length == 100) {
+            console.log('Max messages received, consider increasing the cron polling interval.')
+        }
         return newMessages
     } else {
         return newMessages
