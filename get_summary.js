@@ -28,7 +28,7 @@ const getMessagesSinceTime = async (channelId) => {
     const currentTimestamp = Date.now();
 
     let params = {
-        TableName: config.dyanamoDB_table,
+        TableName: config.dynamoDB_table,
         KeyConditionExpression: 'channelId = :channelId AND #ts BETWEEN :start AND :now',
         ExpressionAttributeNames: {
             '#ts': 'timestamp'
