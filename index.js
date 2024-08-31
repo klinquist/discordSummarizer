@@ -15,17 +15,30 @@ const channels = config.channels;
 const messagesToGet = config.messagesToGet;
 
 const getNewMessages = async (channelId) => {
-    const url = `https://discord.com/api/v9/channels/${channelId}/messages?limit=${messagesToGet}`;
     const headers = {
         'Authorization': accessToken,
     };
-    const msgs = await axios.get(url, { headers })
+    
     let latestMessageTimestamp = await redis.get(`discord-${channelId}`) || 0
-    const newMessages = msgs.data.filter(msg => new Date(msg.timestamp).getTime() > latestMessageTimestamp);
-    if (newMessages.length > 0) {
-        await redis.set(`discord-${channelId}`, new Date(newMessages[0].timestamp).getTime());;
+    let msgs = await axios.get(`https://discord.com/api/v9/channels/${channelId}/messages?limit=${messagesToGet}`, {
+        headers
+    })
+    let newMessages = msgs.data.filter(msg => new Date(msg.timestamp).getTime() > latestMessageTimestamp);
+    if (newMessages.length == 0) {
+        return []
     }
-    return newMessages;
+    await redis.set(`discord-${channelId}`, new Date(newMessages[0].timestamp).getTime());
+    if (newMessages.length == messagesToGet) {
+        //We need to get more messages!
+        console.log('Received max messages, getting more!')
+        msgs = await axios.get(`https://discord.com/api/v9/channels/${channelId}/messages?limit=${messagesToGet*3}`, {
+            headers
+        })
+        newMessages = msgs.data.filter(msg => new Date(msg.timestamp).getTime() > latestMessageTimestamp);
+        return newMessages
+    } else {
+        return newMessages
+    }
 };
 
 
