@@ -6,7 +6,7 @@ I created this project to help me summarize and provide sentiment analysis on Di
 
 This is a personal project I'm making public on Discord.  It's not meant to be user-friendly outside of my own use case :).
 
-You'll need to be running Redis (to keep track of the latest message timestamp) as well as a DynamoDB table with `channelId` as the primary key and `timestamp` (number) as the sort key.
+You'll need to be running Redis (to keep track of the latest message timestamp) as well as a DynamoDB table with `channelId` as the primary key and `timestamp` (number) as the sort key.  It also sets a `ttl` for 30 days from now - you can configure this to auto-delete old messages in dynamo.
 
 Obtain a discord access token.  Pull up the javascript console in your browser (network tab) and log in to discord.  You'll see an API call being made to https://discord.com/api/v9/channels/... The token is in the headers of that request.
 

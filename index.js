@@ -5,7 +5,7 @@ const moment = require('moment-timezone')
 const axios = require("axios");
 const Redis = require("ioredis");
 const AWS = require("aws-sdk");
-const redis = new Redis();
+const redis = new Redis(); // Hostname required if not localhost...
 
 const dynamodb = new AWS.DynamoDB.DocumentClient({ region: config.aws_region });
 
