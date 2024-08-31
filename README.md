@@ -14,7 +14,7 @@ Rename `config.json.example` to `config.json` and fill in the details (including
 
 Run `npm install` to install the dependencies.
 
-Edit the cron schedule in `index.js` as appropriate.  The channels I monitor are mostly busy on weekdays, so I poll every 5 minutes from 5am-10pm M-F, hourly otherwise.
+Edit the cron schedule in `index.js` as appropriate.  The channels I monitor are mostly busy on weekdays, so I poll every 5 minutes from 5am-10pm M-F, hourly throughout the night, every 30 minutes on weekends.
 
 Run `node index.js` to start - I have it running under pm2.
 

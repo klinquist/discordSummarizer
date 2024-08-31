@@ -97,7 +97,7 @@ const pollForChanges = async () => {
     await pollForChanges()
 
 
-    // Weekday Schedule: Every 5 minutes between 5 AM and 10 PM Pacific Time
+    // Weekday Schedule: Every 5 minutes between 5 AM and 10 PM Pacific Time weekdays
     cron.schedule('*/5 5-21 * * 1-5', async () => { // 1-5 specifies Monday to Friday
         await pollForChanges();
         console.log(`[${moment().tz(config.timeZone).format()}] Executed 5-minute weekday daytime poll.`);
@@ -105,27 +105,28 @@ const pollForChanges = async () => {
         timezone: config.timeZone
     });
 
-    // Weekday Schedule: Every hour between 10 PM and 5 AM Pacific Time
-    cron.schedule('0 22-23 * * 1-5', async () => { // 1-5 specifies Monday to Friday
+    // Every hour 10PM-12PM
+    cron.schedule('0 22-23 * * *', async () => { // 1-5 specifies Monday to Friday
         await pollForChanges();
         console.log(`[${moment().tz(config.timeZone).format()}] Executed hourly weekday nighttime poll (22-23).`);
     }, {
         timezone: config.timeZone
     });
 
-    cron.schedule('0 0-4 * * 1-5', async () => { // 1-5 specifies Monday to Friday
+    // Every hour 12AM-4AM
+    cron.schedule('0 0-4 * * *', async () => { // 1-5 specifies Monday to Friday
         await pollForChanges();
         console.log(`[${moment().tz(config.timeZone).format()}] Executed hourly weekday nighttime poll (0-4).`);
     }, {
         timezone: config.timeZone
     });
 
-    // Weekend Schedule: Every hour, all day
-    cron.schedule('0 * * * 6,0', async () => { // 6 and 0 specify Saturday and Sunday
+    // Weekend Schedule: Every 30 minutes 5AM-10PM
+    cron.schedule('*/30 5-21 * * 6,0', async () => { // 6 and 0 specify Saturday and Sunday
         await pollForChanges();
-        console.log(`[${moment().tz(config.timeZone).format()}] Executed hourly weekend poll.`);
+        console.log(`[${moment().tz('America/Los_Angeles').format()}] Executed 30-minute weekend poll.`);
     }, {
-        timezone: config.timeZone
+        timezone: 'America/Los_Angeles'
     });
 
 })();
