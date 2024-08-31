@@ -14,8 +14,8 @@ Rename `config.json.example` to `config.json` and fill in the details (including
 
 Run `npm install` to install the dependencies.
 
-Edit the cron schedule in index.js as appropriate.  The channels I monitor are mostly busy on weekdays, so I poll every 5 minutes from 5am-10pm M-F, hourly otherwise.
+Edit the cron schedule in `index.js` as appropriate.  The channels I monitor are mostly busy on weekdays, so I poll every 5 minutes from 5am-10pm M-F, hourly otherwise.
 
 Run `node index.js` to start - I have it running under pm2.
 
-I run 'node get_summary.js'  to get a summary.  You may want to also run this on a cron, and have it write to another file/dynamo table.
+I run `node get_summary.js`  to get a summary.  You may want to also run this on a cron, and have it write to another file/dynamo table.

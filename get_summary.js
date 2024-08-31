@@ -24,7 +24,7 @@ const getStartTimestamp = () => {
 };
 
 
-const getMessagesSinceMidnight = async (channelId) => {
+const getMessagesSinceTime = async (channelId) => {
     const currentTimestamp = Date.now();
 
     let params = {
@@ -65,8 +65,19 @@ const getMessagesSinceMidnight = async (channelId) => {
 
 const summarizeMessages = async (messages, system_role) => {
 
+    const maxPayloadSize = (maxSize, payload) => {
+        if (JSON.stringify(payload).length > maxSize) {
+            payload.messages[1].content.pop();
+            console.log('Payload too large, removing last message');
+            return maxPayloadSize(maxSize, payload);
+        }
+        payload.messages[1].content = JSON.stringify(payload.messages[1].content); //OpenAI needs this to be a string
+        console.log(`Payload size: ${JSON.stringify(payload).length}`);
+        return payload;
+    };
 
-    const completion = await openai.chat.completions.create({
+
+    const payload = {
         model: "gpt-4o-mini",
         messages: [
             {
@@ -75,11 +86,12 @@ const summarizeMessages = async (messages, system_role) => {
             },
             {
                 role: 'user',
-                content: JSON.stringify(messages)
+                content: messages
             }
         ]
+    }
 
-    });
+    const completion = await openai.chat.completions.create(maxPayloadSize(126976, payload));
 
     return completion.choices[0].message.content;
 };
@@ -90,7 +102,7 @@ const summarizeMessages = async (messages, system_role) => {
 (async () => {
     for (const channel of channels) {
         try {
-            const messages = await getMessagesSinceMidnight(channel.id);
+            const messages = await getMessagesSinceTime(channel.id);
             if (messages.length > 0) {
                 console.log(`Asking OpenAI to summarize ${messages.length} messages...`);
                 const summary = await summarizeMessages(messages, channel.system_role);
