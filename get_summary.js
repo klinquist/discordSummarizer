@@ -23,13 +23,17 @@ const s3 = new AWS.S3();
 
 
 
-// Calculate the UNIX timestamp for 5AM today. That's when most of the valuable chatter starts.
-const getStartTimestamp = () => {
-    return moment().tz(config.timeZone).startOf('day').add(5, 'hours').valueOf();
-};
+
 
 
 const getMessagesSinceTime = async (channelId) => {
+
+    // Calculate the UNIX timestamp for 5AM today. That's when most of the valuable chatter starts.
+    const getStartTimestamp = () => {
+        return moment().tz(config.timeZone).startOf('day').add(5, 'hours').valueOf();
+    };
+
+
     const currentTimestamp = Date.now();
 
     let params = {
@@ -134,6 +138,7 @@ const generateSummary = async () => {
                 const messages = await getMessagesSinceTime(channel.id);
                 if (messages.length > 0) {
                     console.log(`Generating for ${channel.name}`);
+                    const sm = summarizeMessages(messages, channel.system_role);
                     summary += `## ${channel.name}:\n${sm}\n\n`
                 } else {
                     console.log(`No messages in channel ${channel.name} since start time.`);
@@ -152,8 +157,9 @@ const generateSummary = async () => {
 (async () => {
 
     console.log('Waiting until 8PM')
-    cron.schedule('5 20 * * *', async () => {
-        await generateSummary();
+    await generateSummary();
+    cron.schedule('7 20 * * *', async () => {
+        
         console.log('Done')
         console.log(`[${moment().tz('America/Los_Angeles').format()}] Executed daily 8PM poll.`);
     }, {
