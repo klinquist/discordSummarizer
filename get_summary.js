@@ -158,7 +158,7 @@ const generateSummary = async () => {
 
     console.log('Waiting until 8PM')
     await generateSummary();
-    cron.schedule('7 20 * * *', async () => {
+    cron.schedule('0 20 * * *', async () => {
         
         console.log('Done')
         console.log(`[${moment().tz('America/Los_Angeles').format()}] Executed daily 8PM poll.`);
