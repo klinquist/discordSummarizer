@@ -33,8 +33,11 @@ const getMessagesSinceTime = async (channelId) => {
         return moment().tz(config.timeZone).startOf('day').add(5, 'hours').valueOf();
     };
 
+    const currentTimestamp = () => {
+        return Date.now();
+    }
 
-    const currentTimestamp = Date.now();
+    //const currentTimestamp = Date.now();
 
     let params = {
         TableName: config.dynamoDB_table,
@@ -45,7 +48,7 @@ const getMessagesSinceTime = async (channelId) => {
         ExpressionAttributeValues: {
             ':channelId': channelId,
             ':start': getStartTimestamp(),
-            ':now': currentTimestamp
+            ':now': currentTimestamp()
         }
     };
 
@@ -147,9 +150,28 @@ const generateSummary = async () => {
                 console.error(`Error processing channel ${channel.name}:`, error);
             }
         }
-    let html = converter.makeHtml(summary);
-    console.log(`Uploading to S3`);
-        await uploadToS3(html);
+    let html = `
+  <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body {
+          font-size: 16px;
+        }
+        @media (max-width: 600px) {
+          body {
+            font-size: 18px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      ${converter.makeHtml(summary)}
+    </body>
+  </html>
+`;
+
+    await uploadToS3(html);
     
 }
 
@@ -157,7 +179,6 @@ const generateSummary = async () => {
 (async () => {
 
     console.log('Waiting until 8PM')
-    
     cron.schedule('0 20 * * *', async () => {
         await generateSummary();
         console.log('Done')

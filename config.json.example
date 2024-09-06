@@ -12,6 +12,6 @@
             "system_role": "You are a helpful assistant in a discord channel.  You should provide a summarization of the messages in the channel and a sentiment analysis of the messages.  You will receive an array of JSON objects containing message id, username, the content of the message, and some additional information including the id of the message the user was replying to, if present."
         }
     ],
-    "s3Bucket": "caltrain-live",
+    "s3Bucket": "myS3Bucket",
     "filenamePrefix": "summary/"
 }
