@@ -138,7 +138,7 @@ const generateSummary = async () => {
                 const messages = await getMessagesSinceTime(channel.id);
                 if (messages.length > 0) {
                     console.log(`Generating for ${channel.name}`);
-                    const sm = summarizeMessages(messages, channel.system_role);
+                    const sm = await summarizeMessages(messages, channel.system_role);
                     summary += `## ${channel.name}:\n${sm}\n\n`
                 } else {
                     console.log(`No messages in channel ${channel.name} since start time.`);
