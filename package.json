@@ -13,7 +13,8 @@
     "ioredis": "^5.4.1",
     "moment-timezone": "^0.5.45",
     "node-cron": "^3.0.3",
-    "openai": "^4.57.0"
+    "openai": "^4.57.0",
+    "showdown": "^2.1.0"
   },
   "description": ""
 }
