@@ -107,7 +107,7 @@ const uploadToS3 = async (html) => {
     const fileName = `${config.filenamePrefix}${currentDate}-Summary.html`;
 
     const params = {
-        Bucket: config.s3bucket,
+        Bucket: config.s3Bucket,
         Key: fileName,
         Body: html,
         ContentType: "text/html"
@@ -152,7 +152,7 @@ const generateSummary = async () => {
 (async () => {
 
     console.log('Waiting until 8PM')
-    cron.schedule('0 20 * * *', async () => {
+    cron.schedule('5 20 * * *', async () => {
         await generateSummary();
         console.log('Done')
         console.log(`[${moment().tz('America/Los_Angeles').format()}] Executed daily 8PM poll.`);
