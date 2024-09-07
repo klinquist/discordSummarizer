@@ -1,6 +1,8 @@
 const config = require('./config.json');
 
 const cron = require('node-cron');
+const RSS = require('rss');
+const path = require('path');
 
 const moment = require('moment-timezone');
 const axios = require("axios");
@@ -19,10 +21,7 @@ const channels = config.channels;
 
 var converter = new showdown.Converter()
 const s3 = new AWS.S3();
-
-
-
-
+const cloudfront = new AWS.CloudFront();
 
 
 
@@ -176,11 +175,107 @@ const generateSummary = async () => {
 }
 
 
-(async () => {
 
+
+
+// List all files in the S3 bucket
+async function listFiles() {
+    const params = {
+        Bucket: config.s3Bucket,
+        Prefix: config.filenamePrefix
+    };
+
+    let fileList = [];
+    try {
+        const data = await s3.listObjectsV2(params).promise();
+        fileList = data.Contents.map(item => item.Key).filter(key => key.endsWith('Summary.html'));
+    } catch (err) {
+        console.error('Error listing files:', err);
+    }
+    return fileList;
+}
+
+// Generate RSS feed
+async function generateRSSFeed() {
+    const feed = new RSS({
+        title: 'Caltrain Discord summary',
+        description: 'A feed that updates daily with new summaries',
+        feed_url: `${config.siteUrl}/${config.filenamePrefix}${config.rssFileKey}`,
+        site_url: config.siteUrl,
+        language: 'en',
+    });
+
+    const files = await listFiles();
+
+    files.forEach(file => {
+        const date = path.basename(file, '.html').split('-Summary')[0];
+        const fileUrl = `${config.siteUrl}/${file}`;
+
+        feed.item({
+            title: `Summary for ${date}`,
+            description: `Daily summary for ${date}`,
+            url: fileUrl, // Link to the HTML file in S3
+            date, // Publish date
+        });
+    });
+
+    const rssXML = feed.xml({
+        indent: true
+    });
+    return rssXML;
+}
+
+// Upload the RSS feed to S3
+async function uploadRSSFeed(rssXML) {
+    const params = {
+        Bucket: config.s3Bucket,
+        Key: `${config.filenamePrefix}${config.rssFileKey}`,
+        Body: rssXML,
+        ContentType: 'application/rss+xml',
+    };
+
+    try {
+        await s3.putObject(params).promise();
+        console.log('RSS feed uploaded successfully');
+    } catch (err) {
+        console.error('Error uploading RSS feed:', err);
+    }
+}
+
+// Main function to generate and upload the RSS feed
+async function updateRSSFeed() {
+    const rssXML = await generateRSSFeed();
+    await uploadRSSFeed(rssXML);
+}
+
+async function createInvalidation(distributionId) {
+    const params = {
+        DistributionId: distributionId,
+        InvalidationBatch: {
+            CallerReference: `invalidation-${Date.now()}`, 
+            Paths: {
+                Quantity: 1,
+                Items: ['/summary/summary.xml'], // The path to your RSS file
+            },
+        },
+    };
+
+    try {
+        const data = await cloudfront.createInvalidation(params).promise();
+        console.log('CloudFront invalidation created:', data.Invalidation.Id);
+    } catch (err) {
+        console.error('Error creating CloudFront invalidation:', err);
+    }
+}
+
+
+
+(async () => {
     console.log('Waiting until 8PM')
     cron.schedule('0 20 * * *', async () => {
         await generateSummary();
+        await updateRSSFeed();
+        await createInvalidation(config.cloudfrontId);
         console.log('Done')
         console.log(`[${moment().tz('America/Los_Angeles').format()}] Executed daily 8PM poll.`);
     }, {

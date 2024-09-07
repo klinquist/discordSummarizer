@@ -13,5 +13,8 @@
         }
     ],
     "s3Bucket": "myS3Bucket",
-    "filenamePrefix": "summary/"
+    "filenamePrefix": "summary/",
+    "rssFileKey": "summary.xml",
+    "siteUrl":"https://yoursite.com",
+    "cloudfrontId":"xxxxxxxxxxxx"
 }
