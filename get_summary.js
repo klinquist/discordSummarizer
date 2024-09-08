@@ -132,7 +132,7 @@ const uploadToS3 = async (html) => {
 
 const generateSummary = async () => {
 
-        const today = moment().tz(config.timeZone).format("MMMM D, YYYY");
+        const today = moment().tz(config.timeZone).format("dddd, MMMM Do, YYYY");
         let summary = ``;
         summary += `# Daily Summary and Sentiment Analysis for ${today}\n\n`
         for (const channel of channels) {
@@ -257,7 +257,7 @@ async function createInvalidation(distributionId) {
             CallerReference: `invalidation-${Date.now()}`, 
             Paths: {
                 Quantity: 1,
-                Items: ['/summary/summary.xml'], // The path to your RSS file
+                Items: [`/${config.filenamePrefix}${rssFileKey}`],
             },
         },
     };
@@ -279,8 +279,8 @@ async function createInvalidation(distributionId) {
         await updateRSSFeed();
         await createInvalidation(config.cloudfrontId);
         console.log('Done')
-        console.log(`[${moment().tz('America/Los_Angeles').format()}] Executed daily 8PM poll.`);
+        console.log(`[${moment().tz(config.timeZone).format()}] Executed daily 8PM poll.`);
     }, {
-        timezone: 'America/Los_Angeles'
+        timezone: config.timeZone
     });
 })();
