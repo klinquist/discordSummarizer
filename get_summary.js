@@ -257,7 +257,7 @@ async function createInvalidation(distributionId) {
             CallerReference: `invalidation-${Date.now()}`, 
             Paths: {
                 Quantity: 1,
-                Items: [`/${config.filenamePrefix}${rssFileKey}`],
+                Items: [`/${config.filenamePrefix}${config.rssFileKey}`],
             },
         },
     };
