@@ -188,7 +188,6 @@ async function listFiles() {
     let fileList = [];
     try {
         const data = await s3.listObjectsV2(params).promise();
-        console.log('Data:', data);
         fileList = data.Contents.map(item => item.Key).filter(key => key.endsWith('Summary.html'));
     } catch (err) {
         console.error('Error listing files:', err);
@@ -216,7 +215,7 @@ async function generateRSSFeed() {
 
         feed.item({
             title: `Summary for ${date}`,
-            description: `Daily summary for ${date}`,
+            description: `Daily summary for ${date} (follow RSS link to view)`,
             url: fileUrl, // Link to the HTML file in S3
             date, // Publish date
         });
@@ -274,7 +273,6 @@ async function createInvalidation(distributionId) {
 
 
 (async () => {
-    await updateRSSFeed();
     console.log('Waiting until 8PM')
     cron.schedule('0 20 * * *', async () => {
         await generateSummary();
