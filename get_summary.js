@@ -188,6 +188,7 @@ async function listFiles() {
     let fileList = [];
     try {
         const data = await s3.listObjectsV2(params).promise();
+        console.log('Data:', data);
         fileList = data.Contents.map(item => item.Key).filter(key => key.endsWith('Summary.html'));
     } catch (err) {
         console.error('Error listing files:', err);
@@ -206,6 +207,8 @@ async function generateRSSFeed() {
     });
 
     const files = await listFiles();
+
+    console.log('Found files:', files);
 
     files.forEach(file => {
         const date = path.basename(file, '.html').split('-Summary')[0];
@@ -271,6 +274,7 @@ async function createInvalidation(distributionId) {
 
 
 (async () => {
+    await updateRSSFeed();
     console.log('Waiting until 8PM')
     cron.schedule('0 20 * * *', async () => {
         await generateSummary();
