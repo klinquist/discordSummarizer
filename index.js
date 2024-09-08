@@ -140,9 +140,9 @@ const pollForChanges = async () => {
     // Weekend Schedule: Every 30 minutes 5AM-10PM
     cron.schedule('*/15 5-21 * * 6,0', async () => { // 6 and 0 specify Saturday and Sunday
         await pollForChanges();
-        console.log(`[${moment().tz('America/Los_Angeles').format()}] Executed 15-minute weekend poll.`);
+        console.log(`[${moment().tz(config.timeZone).format()}] Executed 15-minute weekend poll.`);
     }, {
-        timezone: 'America/Los_Angeles'
+        timezone: config.timeZone
     });
 
 })();
