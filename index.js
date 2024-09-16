@@ -45,11 +45,42 @@ const getNewMessages = async (channelId) => {
 };
 
 
+const writeAuthorsToRedis = async (messages) => {
+    // Create a unique set of authors for each channel for each day
+    const authorsByChannel = {};
+    for (const msg of messages) {
+        const channelId = msg.channel_id;
+        if (!authorsByChannel[channelId]) {
+            authorsByChannel[channelId] = new Set();
+        }
+        authorsByChannel[channelId].add(msg.author.id);
+    }
+    const today = moment().tz('America/Los_Angeles').format('YYYY-MM-DD');
+    for (const channelId in authorsByChannel) {
+        await redis.sadd(`discord-authors-${channelId}-${today}`, ...authorsByChannel[channelId]);
+    }
+}
+
+const writeMessageCountToRedis = async (messages) => {
+    const today = moment().tz('America/Los_Angeles').format('YYYY-MM-DD');
+    const messageCounts = {};
+    for (const msg of messages) {
+        if (!messageCounts[msg.channel_id]) {
+            messageCounts[msg.channel_id] = 0;
+        }
+        messageCounts[msg.channel_id]++;
+    }
+    for (const channelId in messageCounts) {
+        await redis.incrby(`discord-message-count-${channelId}-${today}`, messageCounts[channelId]);
+    }
+}
 
 
 const writeMessagesToDynamoDB = async (messages, channelId) => {
     const batchSize = 25;
     const ttlDays = 30;
+
+
 
     const writeBatch = async (batch) => {
         const putRequests = batch.map((msg) => ({
@@ -98,6 +129,8 @@ const pollForChanges = async () => {
                 const newMessages = await getNewMessages(channel.id);
                 if (newMessages.length > 0) {
                     await writeMessagesToDynamoDB(newMessages, channel.id);
+                    await writeAuthorsToRedis(newMessages);
+                    await writeMessageCountToRedis(newMessages);
                 } else {
                     console.log(`No new messages in channel ${channel.name}`);
                 }
