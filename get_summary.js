@@ -195,6 +195,7 @@ const generateSummary = async () => {
     </head>
     <body>
       ${converter.makeHtml(summary)}
+      <p><i>This is a ChatGPT-generated summary which may contain inaccurate information including timestamps.</i></p>
     </body>
   </html>
 `;
