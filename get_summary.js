@@ -1,5 +1,5 @@
 const config = require('./config.json');
-
+process.env.AWS_REGION = config.aws_region;
 const cron = require('node-cron');
 const RSS = require('rss');
 const path = require('path');
@@ -129,6 +129,35 @@ const uploadToS3 = async (html) => {
 };
 
 
+const sendEmail = async (html) => {
+    const params = {
+        Destination: {
+            ToAddresses: [config.emailTo]
+        },
+        Message: {
+            Body: {
+                Html: {
+                    Charset: 'UTF-8',
+                    Data: html
+                }
+            },
+            Subject: {
+                Charset: 'UTF-8',
+                Data: config.emailSummaryPrefix + moment().tz(config.timeZone).format("dddd, MMMM Do, YYYY")
+            }
+        },
+        Source: config.emailFrom
+    };
+
+    try {
+        const result = await new AWS.SES().sendEmail(params).promise();
+        console.log(`Email sent successfully. Message ID: ${result.MessageId}`);
+    } catch (error) {
+        console.error('Error sending email:', error);
+        throw error;
+    }
+};
+
 
 const generateSummary = async () => {
 
@@ -171,6 +200,7 @@ const generateSummary = async () => {
 `;
 
     await uploadToS3(html);
+    await sendEmail(html);
     
 }
 

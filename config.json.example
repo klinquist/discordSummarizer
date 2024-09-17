@@ -16,5 +16,8 @@
     "filenamePrefix": "summary/",
     "rssFileKey": "summary.xml",
     "siteUrl":"https://yoursite.com",
-    "cloudfrontId":"xxxxxxxxxxxx"
+    "cloudfrontId":"xxxxxxxxxxxx",
+    "emailSummaryPrefix": "xxxx",
+    "emailFrom":"xxxx",
+    "emailTo": "xxx"
 }
