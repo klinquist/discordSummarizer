@@ -200,8 +200,7 @@ const generateSummary = async () => {
   </html>
 `;
 
-    await uploadToS3(html);
-    await sendEmail(html);
+    return html;
     
 }
 
@@ -306,10 +305,11 @@ async function createInvalidation(distributionId) {
 (async () => {
     console.log('Waiting until 8PM')
     cron.schedule('0 20 * * *', async () => {
-        await generateSummary();
+        let summary = await generateSummary();
+        await uploadToS3(summary);
+        await sendEmail(summary);
         await updateRSSFeed();
         await createInvalidation(config.cloudfrontId);
-        console.log('Done')
         console.log(`[${moment().tz(config.timeZone).format()}] Executed daily 8PM poll.`);
     }, {
         timezone: config.timeZone
