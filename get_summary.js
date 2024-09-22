@@ -77,11 +77,11 @@ const getMessagesSinceTime = async (channelId) => {
 const summarizeMessages = async (messages, system_role) => {
 
     const maxPayloadSize = (maxSize, payload) => {
-        // if (JSON.stringify(payload).length > maxSize) {
-        //     payload.messages[1].content.pop();
-        //     console.log('Payload too large, removing last message');
-        //     return maxPayloadSize(maxSize, payload);
-        // }
+        if (JSON.stringify(payload).length > maxSize) {
+            payload.messages[1].content.pop();
+            console.log('Payload too large, removing last message');
+            return maxPayloadSize(maxSize, payload);
+        }
         payload.messages[1].content = JSON.stringify(payload.messages[1].content); //OpenAI needs this to be a string
         console.log(`Payload size: ${JSON.stringify(payload).length}`);
         return payload;
@@ -102,7 +102,7 @@ const summarizeMessages = async (messages, system_role) => {
         ]
     }
 
-    const completion = await openai.chat.completions.create(maxPayloadSize(126976, payload));
+    const completion = await openai.chat.completions.create(maxPayloadSize(300000, payload));
 
     return completion.choices[0].message.content;
 };
@@ -304,10 +304,15 @@ async function createInvalidation(distributionId) {
 
 (async () => {
     console.log('Waiting until 8PM')
+    let summary = await generateSummary();
+    await uploadToS3(summary);
+    //await sendEmail(summary);
+    await updateRSSFeed();
+    await createInvalidation(config.cloudfrontId);
     cron.schedule('0 20 * * *', async () => {
         let summary = await generateSummary();
         await uploadToS3(summary);
-        await sendEmail(summary);
+        //await sendEmail(summary);
         await updateRSSFeed();
         await createInvalidation(config.cloudfrontId);
         console.log(`[${moment().tz(config.timeZone).format()}] Executed daily 8PM poll.`);
