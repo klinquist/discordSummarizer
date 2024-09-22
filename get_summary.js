@@ -76,15 +76,17 @@ const getMessagesSinceTime = async (channelId) => {
 
 const summarizeMessages = async (messages, system_role) => {
 
-    const maxPayloadSize = (maxSize, payload) => {
-        if (JSON.stringify(payload).length > maxSize) {
-            payload.messages[1].content.pop();
-            console.log('Payload too large, removing last message');
-            return maxPayloadSize(maxSize, payload);
+
+
+    const maxPayloadSize = (maxSize, arr) => {
+        console.log('Incoming array size is:', arr.length);
+        //Remove random elements from the array until it fits the max size
+        while (JSON.stringify(arr) > maxSize) {
+            const index = Math.floor(Math.random() * arr.length);
+            arr.splice(index, 1);
         }
-        payload.messages[1].content = JSON.stringify(payload.messages[1].content); //OpenAI needs this to be a string
-        console.log(`Payload size: ${JSON.stringify(payload).length}`);
-        return payload;
+        console.log('Trimmed array size is:', arr.length);
+        return arr;
     };
 
 
