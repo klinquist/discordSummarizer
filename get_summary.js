@@ -115,6 +115,12 @@ const summarizeMessages = async (messages, system_role) => {
     messages = maxPayloadSize(300000, messages);
     let newMsgsLength = messages.length;
 
+    // convert to a normal timezone format
+    messages = messages.map((msg) => {
+        msg.timestamp = moment(msg.timestamp).tz(config.timeZone).format('h:m A');
+        return msg;
+    });
+
     const payload = {
         model: "gpt-4o-mini",
         messages: [
@@ -338,11 +344,11 @@ async function createInvalidation(distributionId) {
 
 (async () => {
     console.log('Waiting until 8PM')
-    //let summary = await generateSummary();
-    //await uploadToS3(summary);
-    //await sendEmail(summary);
-    //await updateRSSFeed();
-    //await createInvalidation(config.cloudfrontId);
+    // let summary = await generateSummary();
+    // await uploadToS3(summary);
+    // await sendEmail(summary);
+    // await updateRSSFeed();
+    // await createInvalidation(config.cloudfrontId);
     cron.schedule('0 20 * * *', async () => {
         let summary = await generateSummary();
         await uploadToS3(summary);
