@@ -81,7 +81,7 @@ const summarizeMessages = async (messages, system_role) => {
     const maxPayloadSize = (maxSize, arr) => {
         console.log('Incoming array size is:', arr.length);
         //Remove random elements from the array until it fits the max size
-        while (JSON.stringify(arr) > maxSize) {
+        while (JSON.stringify(arr).length > maxSize) {
             const index = Math.floor(Math.random() * arr.length);
             arr.splice(index, 1);
         }
@@ -89,6 +89,9 @@ const summarizeMessages = async (messages, system_role) => {
         return arr;
     };
 
+    let origMsgsLength = messages.length;
+    messages = maxPayloadSize(300000, messages);
+    let newMsgsLength = messages.length;
 
     const payload = {
         model: "gpt-4o-mini",
@@ -99,12 +102,19 @@ const summarizeMessages = async (messages, system_role) => {
             },
             {
                 role: 'user',
-                content: messages
+                content: JSON.stringify(messages)
             }
         ]
     }
 
-    const completion = await openai.chat.completions.create(maxPayloadSize(300000, payload));
+
+    const completion = await openai.chat.completions.create(payload);
+
+
+    if (newMsgsLength !== origMsgsLength) {
+        let percent = Math.round(100 - (newMsgsLength / origMsgsLength) * 100);
+        completion.choices[0].message.content += `\n\n_Due to ChatGPT's payload maximum, ${percent}% of messages were randomly removed prior to asking ChatGPT summarize._\n\n`;
+    }
 
     return completion.choices[0].message.content;
 };
@@ -306,15 +316,15 @@ async function createInvalidation(distributionId) {
 
 (async () => {
     console.log('Waiting until 8PM')
-    let summary = await generateSummary();
-    await uploadToS3(summary);
+    //let summary = await generateSummary();
+    //await uploadToS3(summary);
     //await sendEmail(summary);
-    await updateRSSFeed();
-    await createInvalidation(config.cloudfrontId);
+    //await updateRSSFeed();
+    //await createInvalidation(config.cloudfrontId);
     cron.schedule('0 20 * * *', async () => {
         let summary = await generateSummary();
         await uploadToS3(summary);
-        //await sendEmail(summary);
+        await sendEmail(summary);
         await updateRSSFeed();
         await createInvalidation(config.cloudfrontId);
         console.log(`[${moment().tz(config.timeZone).format()}] Executed daily 8PM poll.`);
