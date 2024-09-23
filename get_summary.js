@@ -113,7 +113,7 @@ const summarizeMessages = async (messages, system_role) => {
 
     if (newMsgsLength !== origMsgsLength) {
         let percent = Math.round(100 - (newMsgsLength / origMsgsLength) * 100);
-        completion.choices[0].message.content += `\n\n_Due to ChatGPT's payload maximum, ${percent}% of messages were randomly removed prior to asking ChatGPT summarize._\n\n`;
+        completion.choices[0].message.content += `\n\n_Due to ChatGPT's payload maximum, ${percent}% of messages were randomly removed prior to generating the summary._\n\n`;
     }
 
     return completion.choices[0].message.content;
