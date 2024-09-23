@@ -80,12 +80,34 @@ const summarizeMessages = async (messages, system_role) => {
 
     const maxPayloadSize = (maxSize, arr) => {
         console.log('Incoming array size is:', arr.length);
+
+        //Remove "ttl" and "channelId" from each message, these fields are not necessary.
+        arr = arr.map((msg) => {
+            delete msg.ttl;
+            delete msg.channelId;
+            return msg;
+        });
+
+        if (JSON.stringify(arr).length <= maxSize) return arr;
+
+        //First, lets just try to remove all messages that have "contents" under 10 characters
+        arr = arr.filter((msg) => {
+            return msg.content.length > 10;
+        });
+            
+        if (JSON.stringify(arr).length <= maxSize) {
+            console.log('Successfully trimmed using short method, new length :', arr.length);
+            return arr;
+        } else {
+            console.log('After short message filter, new length:', arr.length);
+        }
+
         //Remove random elements from the array until it fits the max size
         while (JSON.stringify(arr).length > maxSize) {
             const index = Math.floor(Math.random() * arr.length);
             arr.splice(index, 1);
         }
-        console.log('Trimmed array size is:', arr.length);
+        console.log('Shortened via random method, new length:', arr.length);
         return arr;
     };
 
