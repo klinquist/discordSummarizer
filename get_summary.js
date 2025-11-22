@@ -116,34 +116,18 @@ const summarizeMessages = async (messages, system_role) => {
   messages = maxPayloadSize(300000, messages);
   let newMsgsLength = messages.length;
 
-  // Normalize timestamps to numbers in case DynamoDB returns strings.
+  // Normalize timestamps and pre-compute a local time string so the model
+  // does not need to call a tool for every message (which can exceed
+  // tool_calls limits).
   messages = messages.map((msg) => {
     msg.timestamp = Number(msg.timestamp);
+    msg.local_time = moment(msg.timestamp)
+      .tz(config.timeZone)
+      .format("h:mm A");
     return msg;
   });
 
-  const tools = [
-    {
-      type: "function",
-      function: {
-        name: "format_timestamp",
-        description:
-          "Converts a Unix timestamp in milliseconds to a localized time string in America/Los_Angeles.",
-        parameters: {
-          type: "object",
-          properties: {
-            unix_ms: {
-              type: "number",
-              description: "Unix timestamp in milliseconds.",
-            },
-          },
-          required: ["unix_ms"],
-        },
-      },
-    },
-  ];
-
-  const systemPrompt = `${system_role}\n\nWhen you need to reference the local time for a timestamp, call the format_timestamp tool and use the returned value.`;
+  const systemPrompt = `${system_role}\n\nEach message includes a preformatted local_time string (timezone: ${config.timeZone}); prefer that over the raw timestamp.`;
 
   const conversation = [
     {
@@ -156,71 +140,22 @@ const summarizeMessages = async (messages, system_role) => {
     },
   ];
 
-  let completion;
-  let toolAugmentedConversation = [...conversation];
+  const completion = await openai.chat.completions.create({
+    model: "gpt-5-mini",
+    messages: conversation,
+  });
 
-  const formatTimestamp = (unix_ms) =>
-    moment(unix_ms).tz(config.timeZone).format("h:mm A");
+  const finalContent = completion.choices[0].message.content || "";
 
-  while (true) {
-    completion = await openai.chat.completions.create({
-      model: "gpt-5-mini",
-      messages: toolAugmentedConversation,
-      tools,
-    });
-
-    const choice = completion.choices[0];
-    const message = choice.message;
-
-    if (choice.finish_reason === "tool_calls" && message.tool_calls) {
-      toolAugmentedConversation.push({
-        role: "assistant",
-        content: message.content,
-        tool_calls: message.tool_calls,
-      });
-
-      for (const toolCall of message.tool_calls) {
-        if (toolCall.function.name === "format_timestamp") {
-          let args;
-          try {
-            args = JSON.parse(toolCall.function.arguments || "{}");
-          } catch (err) {
-            args = {};
-          }
-
-          const unixMs = args.unix_ms;
-          let formattedTime = "";
-
-          if (typeof unixMs === "number" && !Number.isNaN(unixMs)) {
-            formattedTime = formatTimestamp(unixMs);
-          } else {
-            formattedTime =
-              "Unable to format timestamp: unix_ms must be a valid number.";
-          }
-
-          toolAugmentedConversation.push({
-            role: "tool",
-            content: JSON.stringify({ time: formattedTime }),
-            tool_call_id: toolCall.id,
-          });
-        }
-      }
-
-      continue;
-    }
-
-    const finalContent = message.content || "";
-
-    if (newMsgsLength !== origMsgsLength) {
-      let percent = Math.round(100 - (newMsgsLength / origMsgsLength) * 100);
-      return (
-        finalContent +
-        `\n\n_Due to ChatGPT's payload maximum, ${percent}% of messages were randomly removed prior to generating the summary._\n\n`
-      );
-    }
-
-    return finalContent;
+  if (newMsgsLength !== origMsgsLength) {
+    let percent = Math.round(100 - (newMsgsLength / origMsgsLength) * 100);
+    return (
+      finalContent +
+      `\n\n_Due to ChatGPT's payload maximum, ${percent}% of messages were randomly removed prior to generating the summary._\n\n`
+    );
   }
+
+  return finalContent;
 };
 
 const uploadToS3 = async (html, summary_text) => {
@@ -232,7 +167,7 @@ const uploadToS3 = async (html, summary_text) => {
     Bucket: config.s3Bucket,
     Key: htmlFileName,
     Body: html,
-    ContentType: "text/html",
+    ContentType: "text/html; charset=utf-8",
   };
 
   try {
@@ -247,7 +182,7 @@ const uploadToS3 = async (html, summary_text) => {
     Bucket: config.s3Bucket,
     Key: textFileName,
     Body: summary_text,
-    ContentType: "text/plain",
+    ContentType: "text/plain; charset=utf-8",
   };
 
   try {
@@ -325,7 +260,7 @@ const generateSummary = async () => {
     </head>
     <body>
       ${converter.makeHtml(summary)}
-      <p><i>This is a ChatGPT-generated summary which may contain inaccurate information including timestamps.</i></p>
+      <p><i>This is a ChatGPT-generated summary which may contain inaccurate information.</i></p>
     </body>
   </html>
 `;
@@ -390,7 +325,7 @@ async function uploadRSSFeed(rssXML) {
     Bucket: config.s3Bucket,
     Key: `${config.filenamePrefix}${config.rssFileKey}`,
     Body: rssXML,
-    ContentType: "application/rss+xml",
+    ContentType: "application/rss+xml; charset=utf-8",
   };
 
   try {
@@ -427,24 +362,43 @@ async function createInvalidation(distributionId) {
   }
 }
 
+async function runSummaryJob() {
+  const [summaryHtml, summaryText] = await generateSummary();
+  await uploadToS3(summaryHtml, summaryText);
+  await sendEmail(summaryHtml);
+  await updateRSSFeed();
+  await createInvalidation(config.cloudfrontId);
+  console.log(
+    `[${moment().tz(config.timeZone).format()}] Summary job completed.`
+  );
+}
+
 (async () => {
+  const forceRun = process.argv.includes("--force");
+
+  if (forceRun) {
+    console.log("Force run requested; executing summary immediately.");
+    try {
+      await runSummaryJob();
+      console.log("Force run complete; exiting.");
+      process.exit(0);
+    } catch (err) {
+      console.error("Force run failed:", err);
+      process.exit(1);
+    }
+  }
+
   console.log("Waiting until 8PM");
-  // let summary = await generateSummary();
-  // await uploadToS3(summary);
-  // await sendEmail(summary);
+  // let [summaryHtml, summaryText] = await generateSummary();
+  // await uploadToS3(summaryHtml, summaryText);
+  // await sendEmail(summaryHtml);
   // await updateRSSFeed();
   // await createInvalidation(config.cloudfrontId);
   cron.schedule(
     "0 20 * * *",
     async () => {
-      let [summary, summary_text] = await generateSummary();
-      await uploadToS3(summary, summary_text);
-      await sendEmail(summary);
-      await updateRSSFeed();
-      await createInvalidation(config.cloudfrontId);
-      console.log(
-        `[${moment().tz(config.timeZone).format()}] Executed daily 8PM poll.`
-      );
+      await runSummaryJob();
+      console.log(`[${moment().tz(config.timeZone).format()}] Executed daily 8PM poll.`);
     },
     {
       timezone: config.timeZone,
