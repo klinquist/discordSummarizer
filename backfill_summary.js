@@ -1,27 +1,27 @@
 const config = require("./config.json");
 process.env.AWS_REGION = config.aws_region;
-const cron = require("node-cron");
+process.env.OPENAI_API_KEY = config.openAI_key;
+
+const AWS = require("aws-sdk");
 const RSS = require("rss");
 const path = require("path");
-
+const fs = require("fs/promises");
 const moment = require("moment-timezone");
-const axios = require("axios");
-const AWS = require("aws-sdk");
-process.env.OPENAI_API_KEY = config.openAI_key;
+const OpenAI = require("openai");
+const showdown = require("showdown");
+
 const dynamodb = new AWS.DynamoDB.DocumentClient({
   region: config.aws_region,
 });
-
-const OpenAI = require("openai");
+const s3 = new AWS.S3();
+const cloudfront = new AWS.CloudFront();
 const openai = new OpenAI();
-
-const showdown = require("showdown");
+const converter = new showdown.Converter();
 
 const channels = config.channels;
 
-var converter = new showdown.Converter();
-const s3 = new AWS.S3();
-const cloudfront = new AWS.CloudFront();
+const DEFAULT_START_HOUR = 5;
+const DEFAULT_END_HOUR = 20;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -41,33 +41,106 @@ const getOpenAIErrorInfo = (error) => {
   };
 };
 
-const getMessagesSinceTime = async (channelId) => {
-  // Calculate the UNIX timestamp for 5AM today. That's when most of the valuable chatter starts.
-  const getStartTimestamp = () => {
-    return moment()
-      .tz(config.timeZone)
-      .startOf("day")
-      .add(5, "hours")
-      .valueOf();
+const parseArgs = (argv) => {
+  const dates = [];
+  let dryRun = false;
+
+  for (let i = 2; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (arg === "--date") {
+      const value = argv[i + 1];
+      if (!value) {
+        throw new Error("Missing value for --date");
+      }
+      dates.push(value);
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--date=")) {
+      const value = arg.slice("--date=".length);
+      dates.push(value);
+      continue;
+    }
+    if (arg === "--dates") {
+      const value = argv[i + 1];
+      if (!value) {
+        throw new Error("Missing value for --dates");
+      }
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => dates.push(item));
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--dates=")) {
+      const value = arg.slice("--dates=".length);
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => dates.push(item));
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") {
+      return { dates, dryRun, help: true };
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  return { dates, dryRun, help: false };
+};
+
+const printUsage = () => {
+  console.log("Usage:");
+  console.log(
+    "  node backfill_summary.js --date YYYY-MM-DD [--date YYYY-MM-DD] [--dry-run]"
+  );
+  console.log(
+    "  node backfill_summary.js --dates YYYY-MM-DD,YYYY-MM-DD [--dry-run]"
+  );
+  console.log("");
+  console.log(
+    `Defaults to ${DEFAULT_START_HOUR}:00-${DEFAULT_END_HOUR}:00 in ${config.timeZone}.`
+  );
+};
+
+const getWindowForDate = (dateStr) => {
+  const day = moment.tz(dateStr, "YYYY-MM-DD", true, config.timeZone);
+  if (!day.isValid()) {
+    throw new Error(`Invalid date (expected YYYY-MM-DD): ${dateStr}`);
+  }
+
+  const start = day.clone().startOf("day").add(DEFAULT_START_HOUR, "hours");
+  const end = day.clone().startOf("day").add(DEFAULT_END_HOUR, "hours");
+
+  return {
+    dateKey: day.format("YYYY-MM-DD"),
+    dateLabel: day.format("dddd, MMMM Do, YYYY"),
+    startTimestamp: start.valueOf(),
+    endTimestamp: end.valueOf(),
+    startLabel: start.format(),
+    endLabel: end.format(),
   };
+};
 
-  const currentTimestamp = () => {
-    return Date.now();
-  };
-
-  //const currentTimestamp = Date.now();
-
+const getMessagesBetweenTimes = async (channelId, startTimestamp, endTimestamp) => {
   let params = {
     TableName: config.dynamoDB_table,
     KeyConditionExpression:
-      "channelId = :channelId AND #ts BETWEEN :start AND :now",
+      "channelId = :channelId AND #ts BETWEEN :start AND :end",
     ExpressionAttributeNames: {
       "#ts": "timestamp",
     },
     ExpressionAttributeValues: {
       ":channelId": channelId,
-      ":start": getStartTimestamp(),
-      ":now": currentTimestamp(),
+      ":start": startTimestamp,
+      ":end": endTimestamp,
     },
   };
 
@@ -82,7 +155,6 @@ const getMessagesSinceTime = async (channelId) => {
     try {
       const result = await dynamodb.query(params).promise();
       allMessages = allMessages.concat(result.Items);
-
       lastEvaluatedKey = result.LastEvaluatedKey;
     } catch (error) {
       console.error(`Error querying messages for channel ${channelId}:`, error);
@@ -97,7 +169,6 @@ const summarizeMessages = async (messages, system_role) => {
   const maxPayloadSize = (maxSize, arr) => {
     console.log("Incoming array size is:", arr.length);
 
-    //Remove "ttl" and "channelId" from each message, these fields are not necessary.
     arr = arr.map((msg) => {
       delete msg.ttl;
       delete msg.channelId;
@@ -106,7 +177,6 @@ const summarizeMessages = async (messages, system_role) => {
 
     if (JSON.stringify(arr).length <= maxSize) return arr;
 
-    //First, lets just try to remove all messages that have "contents" under 10 characters
     arr = arr.filter((msg) => {
       return msg.content.length > 10;
     });
@@ -121,7 +191,6 @@ const summarizeMessages = async (messages, system_role) => {
       console.log("After short message filter, new length:", arr.length);
     }
 
-    //Remove random elements from the array until it fits the max size
     while (JSON.stringify(arr).length > maxSize) {
       const index = Math.floor(Math.random() * arr.length);
       arr.splice(index, 1);
@@ -134,9 +203,6 @@ const summarizeMessages = async (messages, system_role) => {
   messages = maxPayloadSize(300000, messages);
   let newMsgsLength = messages.length;
 
-  // Normalize timestamps and pre-compute a local time string so the model
-  // does not need to call a tool for every message (which can exceed
-  // tool_calls limits).
   messages = messages.map((msg) => {
     msg.timestamp = Number(msg.timestamp);
     msg.local_time = moment(msg.timestamp).tz(config.timeZone).format("h:mm A");
@@ -213,10 +279,9 @@ const summarizeMessages = async (messages, system_role) => {
   return finalContent;
 };
 
-const uploadToS3 = async (html, summary_text) => {
-  const currentDate = moment().tz(config.timeZone).format("YYYY-MM-DD");
-  const htmlFileName = `${config.filenamePrefix}${currentDate}-Summary.html`;
-  const textFileName = `${config.filenamePrefix}${currentDate}-Summary.md`;
+const uploadToS3 = async (html, summary_text, dateKey) => {
+  const htmlFileName = `${config.filenamePrefix}${dateKey}-Summary.html`;
+  const textFileName = `${config.filenamePrefix}${dateKey}-Summary.md`;
 
   const params = {
     Bucket: config.s3Bucket,
@@ -249,7 +314,7 @@ const uploadToS3 = async (html, summary_text) => {
   }
 };
 
-const sendEmail = async (html) => {
+const sendEmail = async (html, dateLabel) => {
   const params = {
     Destination: {
       ToAddresses: [config.emailTo],
@@ -263,9 +328,7 @@ const sendEmail = async (html) => {
       },
       Subject: {
         Charset: "UTF-8",
-        Data:
-          config.emailSummaryPrefix +
-          moment().tz(config.timeZone).format("dddd, MMMM Do, YYYY"),
+        Data: config.emailSummaryPrefix + dateLabel,
       },
     },
     Source: config.emailFrom,
@@ -280,24 +343,29 @@ const sendEmail = async (html) => {
   }
 };
 
-const generateSummary = async () => {
-  const today = moment().tz(config.timeZone).format("dddd, MMMM Do, YYYY");
+const generateSummary = async (dateLabel, startTimestamp, endTimestamp) => {
   let summary = ``;
-  summary += `# Daily Summary and Sentiment Analysis for ${today}\n\n`;
+  summary += `# Daily Summary and Sentiment Analysis for ${dateLabel}\n\n`;
+
   for (const channel of channels) {
     try {
-      const messages = await getMessagesSinceTime(channel.id);
+      const messages = await getMessagesBetweenTimes(
+        channel.id,
+        startTimestamp,
+        endTimestamp
+      );
       if (messages.length > 0) {
         console.log(`Generating for ${channel.name}`);
         const sm = await summarizeMessages(messages, channel.system_role);
         summary += `## ${channel.name}:\n${sm}\n\n`;
       } else {
-        console.log(`No messages in channel ${channel.name} since start time.`);
+        console.log(`No messages in channel ${channel.name} for this window.`);
       }
     } catch (error) {
       console.error(`Error processing channel ${channel.name}:`, error);
     }
   }
+
   let html = `
   <html>
     <head>
@@ -323,7 +391,6 @@ const generateSummary = async () => {
   return [html, summary];
 };
 
-// List all files in the S3 bucket
 async function listFiles() {
   const params = {
     Bucket: config.s3Bucket,
@@ -342,7 +409,6 @@ async function listFiles() {
   return fileList;
 }
 
-// Generate RSS feed
 async function generateRSSFeed() {
   const feed = new RSS({
     title: "Caltrain Discord summary",
@@ -363,8 +429,8 @@ async function generateRSSFeed() {
     feed.item({
       title: `Summary for ${date}`,
       description: `Daily summary for ${date} (follow RSS link to view)`,
-      url: fileUrl, // Link to the HTML file in S3
-      date, // Publish date
+      url: fileUrl,
+      date,
     });
   });
 
@@ -374,7 +440,6 @@ async function generateRSSFeed() {
   return rssXML;
 }
 
-// Upload the RSS feed to S3
 async function uploadRSSFeed(rssXML) {
   const params = {
     Bucket: config.s3Bucket,
@@ -391,7 +456,6 @@ async function uploadRSSFeed(rssXML) {
   }
 }
 
-// Main function to generate and upload the RSS feed
 async function updateRSSFeed() {
   const rssXML = await generateRSSFeed();
   await uploadRSSFeed(rssXML);
@@ -417,48 +481,71 @@ async function createInvalidation(distributionId) {
   }
 }
 
-async function runSummaryJob() {
-  const [summaryHtml, summaryText] = await generateSummary();
-  await uploadToS3(summaryHtml, summaryText);
-  await sendEmail(summaryHtml);
+const writeDryRunFiles = async (dateKey, html, summaryText) => {
+  const dir = path.join(__dirname, "dry-run");
+  const htmlPath = path.join(
+    dir,
+    `${config.filenamePrefix}${dateKey}-Summary.html`
+  );
+  const textPath = path.join(
+    dir,
+    `${config.filenamePrefix}${dateKey}-Summary.md`
+  );
+
+  await fs.mkdir(path.dirname(htmlPath), { recursive: true });
+  await fs.mkdir(path.dirname(textPath), { recursive: true });
+
+  await fs.writeFile(htmlPath, html, "utf8");
+  await fs.writeFile(textPath, summaryText, "utf8");
+
+  console.log(`Dry run outputs written to ${htmlPath} and ${textPath}`);
+};
+
+async function runSummaryJobForDate(dateStr, dryRun) {
+  const { dateKey, dateLabel, startTimestamp, endTimestamp, startLabel, endLabel } =
+    getWindowForDate(dateStr);
+
+  console.log(
+    `Running summary for ${dateKey} (${startLabel} -> ${endLabel} ${config.timeZone})`
+  );
+
+  const [summaryHtml, summaryText] = await generateSummary(
+    dateLabel,
+    startTimestamp,
+    endTimestamp
+  );
+
+  if (dryRun) {
+    console.log(`Dry run enabled; skipping S3/SES/RSS/CloudFront.`);
+    console.log(`Email subject would be: ${config.emailSummaryPrefix}${dateLabel}`);
+    console.log("Dry run summary (markdown):");
+    console.log(summaryText);
+    await writeDryRunFiles(dateKey, summaryHtml, summaryText);
+    return;
+  }
+
+  await uploadToS3(summaryHtml, summaryText, dateKey);
+  await sendEmail(summaryHtml, dateLabel);
   await updateRSSFeed();
   await createInvalidation(config.cloudfrontId);
   console.log(
-    `[${moment().tz(config.timeZone).format()}] Summary job completed.`
+    `[${moment().tz(config.timeZone).format()}] Summary job completed for ${dateKey}.`
   );
 }
 
 (async () => {
-  const forceRun = process.argv.includes("--force");
-
-  if (forceRun) {
-    console.log("Force run requested; executing summary immediately.");
-    try {
-      await runSummaryJob();
-      console.log("Force run complete; exiting.");
-      process.exit(0);
-    } catch (err) {
-      console.error("Force run failed:", err);
-      process.exit(1);
+  try {
+    const { dates, dryRun, help } = parseArgs(process.argv);
+    if (help || dates.length === 0) {
+      printUsage();
+      process.exit(help ? 0 : 1);
     }
+
+    for (const dateStr of dates) {
+      await runSummaryJobForDate(dateStr, dryRun);
+    }
+  } catch (error) {
+    console.error("Backfill summary failed:", error);
+    process.exit(1);
   }
-
-  //console.log("Waiting until 8PM");
-  let [summaryHtml, summaryText] = await generateSummary();
-  await uploadToS3(summaryHtml, summaryText);
-  // await sendEmail(summaryHtml);
-  // await updateRSSFeed();
-  // await createInvalidation(config.cloudfrontId);
-  cron.schedule(
-    "0 20 * * *",
-    async () => {
-      await runSummaryJob();
-      console.log(
-        `[${moment().tz(config.timeZone).format()}] Executed daily 8PM poll.`
-      );
-    },
-    {
-      timezone: config.timeZone,
-    }
-  );
 })();
